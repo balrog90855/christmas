@@ -1,0 +1,301 @@
+<div class="snow" aria-hidden="true">
+  @for (i of [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]; track i) {
+    <span [style.left.%]="i * 5.5" [style.animation-delay.s]="(i % 7) * -1.3" [style.animation-duration.s]="8 + (i % 5) * 2">❄</span>
+  }
+</div>
+
+<header class="hero">
+  <a class="admin-link" routerLink="/admin">Admin</a>
+  <button type="button" class="how-tab" (click)="showHow.set(true)" aria-label="How it works">
+    <span class="q">?</span> How it works
+  </button>
+  <h1>🎄 {{ settings()?.title ?? 'Christmas Raffle' }}</h1>
+  <p class="sub">{{ settings()?.subtitle }}</p>
+  @if (settings(); as s) {
+    <div class="badges">
+      <div class="badge price"><strong>£{{ s.price_pounds }}</strong><span>per square</span></div>
+      <div class="badge charity">
+        <strong>{{ s.charity_percent }}%</strong><span>of proceeds go to {{ s.charity_name }} 💝</span>
+      </div>
+      <div class="badge raised"><strong>£{{ raised() }}</strong><span>raised for charity so far</span></div>
+    </div>
+  }
+</header>
+
+@if (loadError()) { <p class="banner error">{{ loadError() }}</p> }
+
+<main class="layout">
+  <section class="left">
+    @if (board(); as b) {
+      <div class="stats">
+        <div class="meter"><div class="fill" [style.width.%]="progress()"></div></div>
+        <span>{{ b.tiles_available }} of {{ b.tiles_total }} squares still available</span>
+        @if (b.settings.image_url) {
+          <button type="button" class="grid-toggle" (click)="hideGrid.set(!hideGrid())">
+            {{ hideGrid() ? '🔲 Show grid' : '🖼️ View full poster' }}
+          </button>
+        }
+      </div>
+
+      <div class="board-wrap">
+        <div
+          class="board"
+          [style.aspect-ratio]="b.settings.cols + ' / ' + b.settings.rows"
+          [style.grid-template-columns]="'repeat(' + b.settings.cols + ', 1fr)'"
+          [style.grid-template-rows]="'repeat(' + b.settings.rows + ', 1fr)'"
+          [class.noimg]="!b.settings.image_url"
+          [class.gridoff]="hideGrid()"
+        >
+          @if (b.settings.image_url) {
+            <img class="bg" [src]="b.settings.image_url" alt="Raffle picture" />
+          }
+          @for (n of tileNumbers(); track n) {
+            <button
+              type="button"
+              class="tile"
+              [class]="'tile ' + tileClass(n)"
+              [class.hl]="highlighted().has(n)"
+              [title]="tileTitle(n)"
+              (click)="toggle(n)"
+            >
+              @if (winnersMap().has(n)) { 🏆 } @else if (owners().get(n)?.status === 'locked') { ✓ } @else if (owners().get(n)?.status === 'provisional') { ⏳ } @else { {{ n }} }
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="dot free"></i>Available</span>
+        <span><i class="dot selected"></i>Your pick</span>
+        <span><i class="dot held"></i>Held (awaiting code)</span>
+        <span><i class="dot locked"></i>Locked in</span>
+        @if (winners().length) {
+          <span><i class="dot winner"></i>🏆 Winner</span>
+        }
+      </div>
+    } @else {
+      <div class="loading">Loading the raffle board…</div>
+    }
+
+    @if (winners().length) {
+      <section class="prizes winners-showcase">
+        <h2>🏆 Official Raffle Winners!</h2>
+        <p class="muted small">Congratulations to our winning square holders:</p>
+        <div class="prize-grid">
+          @for (w of winners(); track w.id; let idx = $index) {
+            <article class="prize winner-card">
+              <div class="medal">🏆</div>
+              <div class="winner-meta">
+                <span class="winning-square-tag">Square #{{ w.tile_number }}</span>
+                <h3>{{ w.display_name }}</h3>
+                <p>{{ w.prize_title || 'Raffle Winner' }}</p>
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+    }
+
+    <section class="prizes">
+      <h2>🎁 Prizes</h2>
+      @if (prizes().length) {
+        <div class="prize-grid">
+          @for (p of prizes(); track p.id; let i = $index) {
+            <article class="prize">
+              <div class="medal">{{ i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🎁' }}</div>
+              <h3>{{ p.title }}</h3>
+              <p>{{ p.description }}</p>
+            </article>
+          }
+        </div>
+      } @else {
+        <p class="muted">Prizes will be announced soon!</p>
+      }
+    </section>
+
+    @if (charities().length) {
+      <section class="prizes charity-vote">
+        <h2>💝 Choose our charity</h2>
+        <p class="muted small">Locked-in entries can vote once using their lock-in code. Current totals:</p>
+        <div class="prize-grid">
+          @for (c of charities(); track c.id) {
+            <article class="prize charity-option">
+              <h3>{{ c.name }}</h3>
+              <p>{{ c.description }}</p>
+              <strong>{{ c.votes }} vote{{ c.votes === 1 ? '' : 's' }}</strong>
+            </article>
+          }
+        </div>
+      </section>
+    } @else {
+      <section class="prizes charity-vote">
+        <h2>💝 Charity vote coming soon</h2>
+        <p class="muted">The raffle organiser will add charity options shortly.</p>
+      </section>
+    }
+  </section>
+
+  <aside class="sidebar">
+    <h2>🎅 Who's got what</h2>
+    <p class="muted small">
+      Held squares are released after {{ settings()?.hold_days ?? 5 }} days unless a lock-in code is
+      entered. Click a held entry to enter your code.
+    </p>
+    <ul class="entries">
+      @for (e of board()?.entries ?? []; track e.id) {
+        <li>
+          <button
+            type="button"
+            class="entry"
+            [class.locked]="e.status === 'locked'"
+            (mouseenter)="hovered.set(e.id)"
+            (mouseleave)="hovered.set(null)"
+            (click)="e.status === 'provisional' ? openLock(e) : (!e.has_voted ? openVote(e) : null)"
+          >
+            <span class="avatar">{{ e.display_name[0] }}</span>
+            <span class="info">
+              <strong>{{ e.display_name }}</strong>
+              <small>{{ e.tiles.length }} square{{ e.tiles.length === 1 ? '' : 's' }}: {{ e.tiles.join(', ') }}</small>
+            </span>
+            @if (e.status === 'locked') {
+              <span class="pill ok">{{ e.has_voted ? '✓ Voted' : '✓ Vote now' }}</span>
+            } @else {
+              <span class="pill wait">{{ timeLeft(e) }}</span>
+            }
+          </button>
+        </li>
+      } @empty {
+        <li class="muted">No squares claimed yet — be the first!</li>
+      }
+    </ul>
+  </aside>
+</main>
+
+@if (selectedCount() > 0) {
+  <div class="selbar">
+    <div>
+      <strong>{{ selectedCount() }} square{{ selectedCount() === 1 ? '' : 's' }}</strong>
+      · £{{ total() }}
+      <small>({{ settings()?.charity_percent }}% to charity)</small>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" (click)="clear()">Clear</button>
+      <button class="btn primary" (click)="openConfirm()">Confirm selection</button>
+    </div>
+  </div>
+}
+
+@if (showHow()) {
+  <div class="backdrop" (click)="closeModals()">
+    <div class="modal how" (click)="$event.stopPropagation()" role="dialog" aria-label="How it works">
+      <h2>🎅 How it works</h2>
+      <ol class="steps">
+        <li><span class="n">1</span><div><strong>Pick your squares</strong><br />Tap any available square on the picture. Each square costs <strong>£{{ settings()?.price_pounds }}</strong> and you can pick as many as you like.</div></li>
+        <li><span class="n">2</span><div><strong>Hold them</strong><br />Press confirm and enter your name and employee number. Your squares are held for <strong>{{ settings()?.hold_days ?? 5 }} days</strong> and you'll see them in the sidebar.</div></li>
+        <li><span class="n">3</span><div><strong>Pay &amp; get your lock-in code</strong><br />Pay the organiser and they'll give you a lock-in code. Click your name in the sidebar and enter it to lock your squares in for good.</div></li>
+        <li><span class="n">4</span><div><strong>Vote for a charity</strong><br />Once locked in, you can vote for which charity should receive the money. One vote per person.</div></li>
+        <li><span class="n">5</span><div><strong>The draw</strong><br />At the end, a <strong>live draw</strong> will be scheduled in the <strong>second week of December</strong>. Winning squares are drawn at random, like names from a hat. A square can only win once. Winners are shown on this page with a 🏆.</div></li>
+      </ol>
+      <p class="note">💝 <strong>{{ settings()?.charity_percent }}%</strong> of all proceeds go to charity.</p>
+      <p class="muted small">If no lock-in code is entered within {{ settings()?.hold_days ?? 5 }} days, the squares are released for others to pick.</p>
+      <button class="btn primary" (click)="closeModals()">Got it!</button>
+    </div>
+  </div>
+}
+
+@if (showConfirm()) {
+  <div class="backdrop" (click)="closeModals()">
+    <form class="modal" (click)="$event.stopPropagation()" (ngSubmit)="submit()">
+      <h2>Almost there! 🎉</h2>
+      <p class="summary">
+        {{ selectedCount() }} square{{ selectedCount() === 1 ? '' : 's' }} × £{{ settings()?.price_pounds }} =
+        <strong>£{{ total() }}</strong><br />
+        <small>{{ settings()?.charity_percent }}% of every £{{ settings()?.price_pounds }} goes to {{ settings()?.charity_name }}.</small>
+      </p>
+      <label>Full name <input name="name" [(ngModel)]="name" maxlength="120" autocomplete="name" required /></label>
+      <label>Employee number <input name="emp" [(ngModel)]="employeeNumber" maxlength="40" required /></label>
+      <label>Email (optional) <input name="email" type="email" [(ngModel)]="email" maxlength="200" /></label>
+      <p class="muted small">
+        Your squares are held for {{ settings()?.hold_days }} days. Pay the organiser to receive your lock-in code.
+      </p>
+      @if (formError()) { <p class="banner error">{{ formError() }}</p> }
+      <div class="actions">
+        <button type="button" class="btn ghost" (click)="closeModals()">Cancel</button>
+        <button type="submit" class="btn primary" [disabled]="busy()">{{ busy() ? 'Saving…' : 'Hold my squares' }}</button>
+      </div>
+    </form>
+  </div>
+}
+
+@if (result(); as r) {
+  <div class="backdrop" (click)="closeModals()">
+    <div class="modal center" (click)="$event.stopPropagation()">
+      <div class="big">🎄</div>
+      <h2>Squares held!</h2>
+      <p>
+        Squares <strong>{{ r.entry.tiles.join(', ') }}</strong> are yours until
+        <strong>{{ r.entry.expires_at | date: 'EEE d MMM, h:mm a' }}</strong>.
+      </p>
+      <p>{{ r.message }}</p>
+      <p class="muted small">Find your name in the sidebar and click it to enter your lock-in code.</p>
+      <button class="btn primary" (click)="closeModals()">Done</button>
+    </div>
+  </div>
+}
+
+@if (lockTarget(); as t) {
+  <div class="backdrop" (click)="closeModals()">
+    <form class="modal center" (click)="$event.stopPropagation()" (ngSubmit)="voteMode() ? submitVote() : submitLock()">
+      @if (voteDone()) {
+        <div class="big">💝</div>
+        <h2>Vote recorded!</h2>
+        <p>Thank you for choosing a charity. Each locked-in entry gets one vote.</p>
+        <button type="button" class="btn primary" (click)="closeModals()">Done</button>
+      } @else if (lockDone()) {
+        <div class="big">✅</div>
+        <h2>Locked in!</h2>
+        <p>Thank you {{ t.display_name }} — your squares are confirmed. You can now use your lock-in code to vote for a charity.</p>
+        <button type="button" class="btn primary" (click)="startVote()">Vote for a charity</button>
+        <button type="button" class="btn ghost" (click)="closeModals()">Maybe later</button>
+      } @else if (voteMode()) {
+        <div class="big">💝</div>
+        <h2>Vote for a charity</h2>
+        <p>Enter your lock-in code to verify your vote. Each locked-in entry can vote once.</p>
+        @if (charities().length) {
+          <div class="vote-options">
+            @for (c of charities(); track c.id) {
+              <label class="vote-option" [class.chosen]="selectedCharityId() === c.id">
+                <input type="radio" name="charity" [checked]="selectedCharityId() === c.id" (change)="selectCharity(c.id)" />
+                <span><strong>{{ c.name }}</strong><small>{{ c.description }}</small></span>
+                <span class="vote-count">{{ c.votes }} votes</span>
+              </label>
+            }
+          </div>
+        } @else {
+          <p class="muted">The organiser hasn't added any charity options yet.</p>
+        }
+        <input class="code" name="vote-code" [(ngModel)]="code" placeholder="LOCK-IN CODE" maxlength="12" autocomplete="off" />
+        @if (formError()) { <p class="banner error">{{ formError() }}</p> }
+        <div class="actions">
+          <button type="button" class="btn ghost" (click)="closeModals()">Cancel</button>
+          <button type="submit" class="btn primary" [disabled]="busy() || selectedCharityId() === null || !code.trim() || !charities().length">{{ busy() ? 'Submitting…' : 'Submit vote' }}</button>
+        </div>
+      } @else {
+        <div class="big">🔑</div>
+        <h2>Enter lock-in code</h2>
+        <p>
+          {{ t.display_name }} · squares {{ t.tiles.join(', ') }}<br />
+          <small class="muted">{{ timeLeft(t) }} before release</small>
+        </p>
+        <input class="code" name="code" [(ngModel)]="code" placeholder="XXXX-XXXX" maxlength="12" autocomplete="off" />
+        @if (formError()) { <p class="banner error">{{ formError() }}</p> }
+        <div class="actions">
+          <button type="button" class="btn ghost" (click)="closeModals()">Cancel</button>
+          <button type="submit" class="btn primary" [disabled]="busy() || !code.trim()">{{ busy() ? 'Checking…' : 'Lock in' }}</button>
+        </div>
+      }
+    </form>
+  </div>
+}
+
+<footer class="foot">Made with ❤️ and a sprinkle of snow · £{{ settings()?.price_pounds }} a square · {{ settings()?.charity_percent }}% to charity</footer>

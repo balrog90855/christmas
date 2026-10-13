@@ -1,0 +1,292 @@
+<header class="top">
+  <h1>🎅 Raffle admin</h1>
+  <nav>
+    <a routerLink="/">View site</a>
+    <button class="btn ghost sm" (click)="logout()">Log out</button>
+  </nav>
+</header>
+
+<div class="page">
+  <div class="cards">
+    <div class="card"><strong>{{ totals().held }}</strong><span>awaiting lock-in (£{{ totals().pendingPounds }})</span></div>
+    <div class="card ok"><strong>{{ totals().locked }}</strong><span>locked in (£{{ totals().lockedPounds }})</span></div>
+    <div class="card"><strong>£{{ totals().lockedPounds * (settings()?.charity_percent ?? 0) / 100 }}</strong><span>to charity from locked-in</span></div>
+  </div>
+
+  <div class="tabs">
+    <button [class.on]="tab() === 'entries'" (click)="tab.set('entries')">Entries &amp; codes</button>
+    <button [class.on]="tab() === 'prizes'" (click)="tab.set('prizes')">Prizes</button>
+    <button [class.on]="tab() === 'charities'" (click)="tab.set('charities')">Charity vote</button>
+    <button [class.on]="tab() === 'draw'" (click)="tab.set('draw')">🎲 Raffle draw</button>
+    <button [class.on]="tab() === 'settings'" (click)="tab.set('settings')">Settings &amp; image</button>
+  </div>
+
+  @if (message()) { <p class="banner ok">{{ message() }}</p> }
+  @if (error()) { <p class="banner error">{{ error() }}</p> }
+
+  @if (tab() === 'entries') {
+    <section class="panel">
+      <div class="row">
+        <input class="search" placeholder="Search name, employee no., code or square…" [ngModel]="filter()" (ngModelChange)="filter.set($event)" />
+        <button class="btn ghost sm" (click)="loadAll()">↻ Refresh</button>
+        <button class="btn danger sm" (click)="resetAll()" [disabled]="entries().length === 0">Reset all</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Person</th><th>Employee&nbsp;#</th><th>Squares</th><th>Owed</th><th>Lock-in code</th><th>Status</th><th>Charity vote</th><th>Expires</th><th></th></tr>
+          </thead>
+          <tbody>
+            @for (e of visible(); track e.id) {
+              <tr>
+                <td><strong>{{ e.name }}</strong>@if (e.email) {<br /><small class="muted">{{ e.email }}</small>}</td>
+                <td>{{ e.employee_number }}</td>
+                <td class="squares">{{ e.tiles.join(', ') }}</td>
+                <td>£{{ e.total_pounds }}</td>
+                <td>
+                  <button class="code" (click)="copy(e)" title="Copy">{{ e.lockin_code }}</button>
+                  @if (copied() === e.id) { <small class="ok-text">copied!</small> }
+                  @if (e.failed_attempts) { <br /><small class="warn">{{ e.failed_attempts }} wrong attempt(s)</small> }
+                </td>
+                <td><span class="pill" [class.ok]="e.status === 'locked'">{{ e.status === 'locked' ? 'Locked in' : 'Held' }}</span></td>
+                <td>{{ e.charity_vote ?? '—' }}</td>
+                <td>{{ e.status === 'locked' ? '—' : (e.expires_at | date: 'd MMM, HH:mm') }}</td>
+                <td class="acts">
+                  @if (e.status === 'provisional') { <button class="btn green sm" (click)="lock(e)">Mark locked</button> }
+                  <button class="btn ghost sm" (click)="regenerate(e)">New code</button>
+                  <button class="btn danger sm" (click)="release(e)" [disabled]="!!e.charity_vote" [title]="e.charity_vote ? 'Entries that have voted cannot be released' : 'Release squares'">Release</button>
+                </td>
+              </tr>
+            } @empty {
+              <tr><td colspan="9" class="muted empty">No entries to show.</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+
+  @if (tab() === 'prizes') {
+    <section class="panel">
+      <h2>Prizes shown on the home page</h2>
+      @for (p of prizes(); track p.id) {
+        <div class="prize-row">
+          <input [(ngModel)]="p.title" placeholder="Title" maxlength="120" />
+          <input [(ngModel)]="p.description" placeholder="Description" maxlength="1000" />
+          <button class="btn green sm" (click)="savePrize(p)">Save</button>
+          <button class="btn danger sm" (click)="deletePrize(p)">Delete</button>
+        </div>
+      }
+      <h3>Add a prize</h3>
+      <div class="prize-row">
+        <input [(ngModel)]="newPrize.title" placeholder="e.g. 1st Prize" maxlength="120" />
+        <input [(ngModel)]="newPrize.description" placeholder="e.g. Luxury hamper" maxlength="1000" />
+        <button class="btn primary sm" (click)="addPrize()" [disabled]="!newPrize.title.trim()">Add</button>
+      </div>
+    </section>
+  }
+
+  @if (tab() === 'charities') {
+    <section class="panel">
+      <h2>Charity vote options</h2>
+      <p class="muted small">Locked-in entries can vote once using their lock-in code. Votes are verified against that code and shown publicly.</p>
+      @for (charity of charities(); track charity.id) {
+        <div class="prize-row">
+          <input [(ngModel)]="charity.name" placeholder="Charity name" maxlength="120" />
+          <input [(ngModel)]="charity.description" placeholder="Short description" maxlength="500" />
+          <span class="vote-count">{{ charity.votes }} vote{{ charity.votes === 1 ? '' : 's' }}</span>
+          <button class="btn green sm" (click)="saveCharity(charity)">Save</button>
+          <button class="btn danger sm" (click)="deleteCharity(charity)" [disabled]="charity.votes > 0" [title]="charity.votes ? 'Options with votes cannot be deleted' : 'Delete option'">Delete</button>
+        </div>
+      } @empty {
+        <p class="muted">No charity options yet. Add the charities you want users to choose between.</p>
+      }
+      <h3>Add a charity option</h3>
+      <div class="prize-row">
+        <input [(ngModel)]="newCharity.name" placeholder="e.g. Local food bank" maxlength="120" />
+        <input [(ngModel)]="newCharity.description" placeholder="Short description" maxlength="500" />
+        <button class="btn primary sm" (click)="addCharity()" [disabled]="!newCharity.name.trim()">Add</button>
+      </div>
+    </section>
+  }
+
+  @if (tab() === 'draw') {
+    <section class="panel draw-panel">
+      <h2>🎲 Draw raffle winners</h2>
+      <p class="muted small">
+        Generate random winning numbers to select squares and reveal the ticket holders and prizes.
+      </p>
+
+      <div class="draw-controls-grid">
+        <div class="draw-options">
+          <label>
+            Square pool
+            <select [ngModel]="drawPool()" (ngModelChange)="drawPool.set($event)" [disabled]="drawing()">
+              <option value="locked">Locked-in squares only (recommended)</option>
+              <option value="all_claimed">All claimed squares (locked + held)</option>
+            </select>
+          </label>
+
+          <label>
+            Assign a prize (optional)
+            <select [ngModel]="selectedPrizeId()" (ngModelChange)="selectedPrizeId.set($event ? +$event : null)" [disabled]="drawing()">
+              <option [value]="null">No specific prize / Next available</option>
+              @for (p of prizes(); track p.id) {
+                <option [value]="p.id">{{ p.title }} - {{ p.description }}</option>
+              }
+            </select>
+          </label>
+
+          <label>
+            Or custom prize title
+            <input [ngModel]="customPrizeTitle()" (ngModelChange)="customPrizeTitle.set($event)" placeholder="e.g. Star Prize or Mystery Hamper" maxlength="120" [disabled]="drawing()" />
+          </label>
+
+          <label class="checkbox-label">
+            <input type="checkbox" [checked]="allowRepeatPerson()" (change)="allowRepeatPerson.set(!allowRepeatPerson())" [disabled]="drawing()" />
+            <span>Allow the same person to win more than once</span>
+          </label>
+        </div>
+
+        <div class="draw-stage">
+          <div class="pool-status">
+            <strong>{{ eligibleTiles().length }}</strong>
+            <span>eligible square{{ eligibleTiles().length === 1 ? '' : 's' }} in pool</span>
+          </div>
+
+          <div class="roller-container" [class.active]="drawing()" [class.revealed]="!!latestWinner()">
+            <div class="roller-decor">🎄 🎁 ❄️</div>
+            <div class="roller-number">
+              @if (animatedNumber()) {
+                #{{ animatedNumber() }}
+              } @else {
+                🎲
+              }
+            </div>
+            <div class="roller-label">
+              @if (drawing()) {
+                Shuffling tickets…
+              } @else if (latestWinner(); as win) {
+                🎉 Winner revealed!
+              } @else {
+                Ready to draw
+              }
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="btn primary lg draw-btn"
+            (click)="performDraw()"
+            [disabled]="drawing() || eligibleTiles().length === 0"
+          >
+            {{ drawing() ? 'Drawing winner…' : '🎲 Draw winning square' }}
+          </button>
+        </div>
+      </div>
+
+      @if (latestWinner(); as win) {
+        <div class="winner-hero">
+          <div class="winner-hero-badge">🏆 WINNING SQUARE #{{ win.tile_number }}</div>
+          <div class="winner-hero-content">
+            <h3>{{ win.name }}</h3>
+            <p class="winner-emp">Employee: <strong>{{ win.employee_number }}</strong> @if (win.email) { · <span>{{ win.email }}</span> }</p>
+            @if (win.prize_title) {
+              <div class="winner-prize">🎁 Prize: <strong>{{ win.prize_title }}</strong></div>
+            }
+          </div>
+        </div>
+      }
+    </section>
+
+    <section class="panel">
+      <div class="panel-header-row">
+        <div>
+          <h2>🏆 Drawn winners ({{ winners().length }})</h2>
+          <p class="muted small">List of winners drawn so far in order of selection.</p>
+        </div>
+        <div class="draw-actions">
+          <button class="btn ghost sm" (click)="copySummary()" [disabled]="winners().length === 0">
+            {{ copiedSummary() ? '✓ Copied!' : '📋 Copy winners summary' }}
+          </button>
+          <button class="btn danger sm" (click)="resetWinners()" [disabled]="winners().length === 0">
+            Reset all draws
+          </button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Square</th>
+              <th>Prize</th>
+              <th>Winner</th>
+              <th>Employee #</th>
+              <th>Email</th>
+              <th>Drawn at</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (w of winners(); track w.id; let idx = $index) {
+              <tr>
+                <td><strong>#{{ idx + 1 }}</strong></td>
+                <td><span class="winning-square-pill">Square {{ w.tile_number }}</span></td>
+                <td><strong>{{ w.prize_title || '—' }}</strong></td>
+                <td><strong>{{ w.name }}</strong></td>
+                <td>{{ w.employee_number }}</td>
+                <td>{{ w.email || '—' }}</td>
+                <td>{{ w.drawn_at | date: 'd MMM, HH:mm:ss' }}</td>
+                <td>
+                  <button class="btn danger sm" (click)="deleteWinner(w)" title="Remove winner and return square to pool">Remove</button>
+                </td>
+              </tr>
+            } @empty {
+              <tr><td colspan="8" class="muted empty">No winners drawn yet. Press "Draw winning square" above!</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+
+  @if (tab() === 'settings') {
+    <section class="panel">
+      <h2>Raffle picture</h2>
+      <p class="muted small">The image is automatically scaled to cover the tile grid (centred, cropped to the grid's shape).</p>
+      @if (settings()?.image_url) { <img class="preview" [src]="settings()!.image_url" alt="Current image" /> }
+      <div class="row">
+        <input type="file" accept="image/*" (change)="upload($event)" />
+        @if (settings()?.image_url) { <button class="btn danger sm" (click)="removeImage()">Remove image</button> }
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Tile grid</h2>
+      <p class="muted small">Can only be changed when there are no held or locked entries.</p>
+      <div class="grid3">
+        <label>Columns <input type="number" min="1" max="30" [(ngModel)]="grid.cols" /></label>
+        <label>Rows <input type="number" min="1" max="30" [(ngModel)]="grid.rows" /></label>
+        <span class="muted">{{ grid.cols * grid.rows }} squares</span>
+      </div>
+      <button class="btn primary sm" (click)="saveGrid()">Update grid</button>
+    </section>
+
+    <section class="panel">
+      <h2>Details</h2>
+      <div class="form">
+        <label>Title <input [(ngModel)]="form.title" maxlength="120" /></label>
+        <label>Subtitle <input [(ngModel)]="form.subtitle" maxlength="300" /></label>
+        <label>Charity name <input [(ngModel)]="form.charity_name" maxlength="120" /></label>
+        <div class="grid3">
+          <label>Price per square (£) <input type="number" min="1" [(ngModel)]="form.price_pounds" /></label>
+          <label>Charity % <input type="number" min="0" max="100" [(ngModel)]="form.charity_percent" /></label>
+          <label>Hold days <input type="number" min="1" max="60" [(ngModel)]="form.hold_days" /></label>
+        </div>
+      </div>
+      <button class="btn primary sm" (click)="saveSettings()">Save settings</button>
+    </section>
+  }
+</div>
