@@ -13,17 +13,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    if "winners" in sa.inspect(op.get_bind()).get_table_names():
-        return
-    op.create_table(
-        "winners",
-        sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("tile_number", sa.Integer, nullable=False, unique=True),
-        sa.Column("entry_id", sa.Integer, sa.ForeignKey("entries.id", ondelete="RESTRICT"), nullable=False),
-        sa.Column("prize_id", sa.Integer, sa.ForeignKey("prizes.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("prize_title", sa.String(120), nullable=True),
-        sa.Column("drawn_at", sa.DateTime(timezone=True)),
-    )
+    if "winners" not in sa.inspect(op.get_bind()).get_table_names():
+        op.create_table(
+            "winners",
+            sa.Column("id", sa.Integer, primary_key=True),
+            sa.Column("tile_number", sa.Integer, nullable=False, unique=True),
+            sa.Column("entry_id", sa.Integer, sa.ForeignKey("entries.id", ondelete="RESTRICT"), nullable=False),
+            sa.Column("prize_id", sa.Integer, sa.ForeignKey("prizes.id", ondelete="SET NULL"), nullable=True),
+            sa.Column("prize_title", sa.String(120), nullable=True),
+            sa.Column("drawn_at", sa.DateTime(timezone=True)),
+        )
 
 
 def downgrade() -> None:

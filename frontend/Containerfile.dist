@@ -1,0 +1,8 @@
+FROM registry.access.redhat.com/ubi9/nginx-124
+
+USER 0
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/dist/frontend/browser/ /opt/app-root/src/
+EXPOSE 8080
+USER 1001

@@ -28,6 +28,46 @@ npm start
 
 Tables are created automatically on first start. Uploaded images live in `backend/uploads`.
 
+## Running the pre-built frontend (no Node required)
+
+The checked-in build is in `frontend/dist/frontend/browser`. Run `npm run build`
+in `frontend` and commit the result whenever the frontend source changes.
+`frontend/Containerfile.dist` packages it with Nginx without needing Node;
+`frontend/Containerfile` builds from source and does need Node.
+
+**In dev without Node:** start the database and backend as in "Run it", then run
+the `raffle-web` container below, attached to a network that can reach the
+backend under the name `raffle-api` (or edit the `proxy_pass` host in
+`frontend/nginx.conf`, e.g. to `host.containers.internal:8000`). Use `npm start`
+only if you have a compatible Node version.
+
+**With Docker / Podman** (use `docker` in place of `podman` if preferred). The
+Nginx config proxies `/api` to a host named `raffle-api`, so run the backend
+with that name on a shared network:
+
+```sh
+podman network create raffle-net
+podman build -f backend/Containerfile -t raffle-api .
+podman run -d --name raffle-api --network raffle-net \
+  -e DATABASE_URL='postgresql+psycopg://raffle:raffle@raffle-db:5432/raffle' \
+  -e ADMIN_PASSWORD=change-me -e JWT_SECRET=change-me-too raffle-api
+podman run -d --name raffle-db --network raffle-net \
+  -e POSTGRES_USER=raffle -e POSTGRES_PASSWORD=raffle -e POSTGRES_DB=raffle \
+  postgres:16-alpine
+
+podman build -f frontend/Containerfile.dist -t raffle-web .
+podman run -d --name raffle-web --network raffle-net -p 8080:8080 raffle-web
+```
+
+Open http://localhost:8080.
+
+**On OpenShift:** follow the OpenShift section below, but build the frontend
+image with `frontend/Containerfile.dist` instead of `frontend/Containerfile`:
+
+```sh
+podman build -f frontend/Containerfile.dist -t "$FRONTEND_IMAGE" .
+```
+
 ## Deploy to Red Hat OpenShift
 
 The following example builds the application images with Podman, pushes them to a

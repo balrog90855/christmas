@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 from . import services
 from .auth import authenticate, create_token, require_admin
 from .config import config
-from .db import SessionLocal, get_db
+from .db import Base, SessionLocal, engine, get_db
 from .models import Charity, CharityVote, Entry, Prize, Tile, Winner
 from .schemas import (
     AdminEntry,
@@ -52,6 +52,7 @@ async def _expiry_loop():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    Base.metadata.create_all(bind=engine)
     services.run_migrations()
     config.upload_dir.mkdir(parents=True, exist_ok=True)
     with SessionLocal() as db:
@@ -554,4 +555,3 @@ def admin_delete_winner(winner_id: int, db: Session = Depends(get_db)):
 def admin_reset_winners(db: Session = Depends(get_db)):
     db.execute(delete(Winner))
     db.commit()
-
